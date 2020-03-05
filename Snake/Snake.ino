@@ -1,5 +1,5 @@
 /*******************************************************************
-    WIP: Snake game using a 64x64 RGB LED Matrix, 
+    WIP: Snake game using a 64x64 RGB LED Matrix,
     an ESP32 and a Wii Nunchuck.
 
     Parts:
@@ -93,9 +93,24 @@ int snakeYSpeed = 0;
 
 int moveThreshold = 30;
 
+struct snakeLink
+{
+  int x;
+  int y;
+  snakeLink *next;
+};
+
+struct snake
+{
+  int data;
+  snakeLink *head;
+};
+
+snake *player;
+
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600);
+  Serial.begin(115200);
   display.begin(32);
   display.flushDisplay();
 
@@ -110,12 +125,37 @@ void setup() {
     delay(1000);
   }
 
+  Serial.println("Snake init start");
+  player = new snake;
+
+  snakeLink *tail = new snakeLink;
+  snakeLink *middleTail = new snakeLink;
+  snakeLink *middleHead = new snakeLink;
+  
+  player->head = new snakeLink;
+
+  tail->x = 29;
+  tail->y = 32;
+  tail->next = NULL;
+
+  middleTail->x = 30;
+  middleTail->y = 32;
+  middleTail->next = tail;
+
+  middleHead->x = 31;
+  middleHead->y = 32;
+  middleHead->next = middleTail;
+
+  player->head->x = 32;
+  player->head->y = 32;
+  player->head->next = middleHead;
+
+  Serial.println("Snake init done");
 }
 
 int16_t x = 0, dx = 1;
 
-void loop() {
-
+void calculateSnakeMovement() {
   boolean success = nchuk.update();  // Get new data from the controller
 
   if (!success) {  // Ruh roh
@@ -172,16 +212,61 @@ void loop() {
       }
 
     }
-
-    snakeX += snakeXSpeed;
-    snakeY += snakeYSpeed;
-
   }
+}
+
+void processSnake() {
+
+  if (snakeXSpeed != 0 || snakeYSpeed != 0)
+  {
+    int newHeadX = player->head->x + snakeXSpeed;
+    int newHeadY = player->head->y + snakeYSpeed;
+    snakeLink *newHead = new snakeLink;
+    newHead->x = newHeadX;
+    newHead->y = newHeadY;
+    newHead->next = player->head;
+
+    //if(eat treat do something)
+
+    player->head = newHead;
+    snakeLink *tmp = newHead;
+    int count = 0;
+    while (tmp->next != NULL) {
+      if (tmp->next->next == NULL)
+      {
+        tmp->next = NULL;
+      } else {
+        count++;
+        tmp = tmp->next;
+      }
+    }
+
+    Serial.print("Count: ");
+    Serial.println(count);
+  } else {
+    //Serial.print("No movement yet");
+  }
+
+}
+
+void drawSnake() {
+  snakeLink *tmp = player->head;
+  while (tmp != NULL) {
+    display.drawPixel(tmp->x, tmp->y, lineColor);
+    tmp = tmp->next;
+  }
+}
+
+void loop() {
+
+  calculateSnakeMovement();
+  processSnake();
+
 
   //  display.clearDisplay();
   display.fillScreen(backgroundColor);
 
-  display.drawPixel(snakeX, snakeY, lineColor);
+  drawSnake();
   display.showBuffer();
   delay(10);
 }
