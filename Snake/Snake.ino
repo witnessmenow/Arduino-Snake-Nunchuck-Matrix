@@ -230,6 +230,18 @@ void processSnake() {
     int newHeadX = player->head->x + player->xSpeed;
     int newHeadY = player->head->y + player->ySpeed;
 
+    if(newHeadX > 63){
+      newHeadX = 0;
+    } else if(newHeadX < 0){
+      newHeadX = 63;
+    }
+
+    if(newHeadY > 63){
+      newHeadY = 0;
+    } else if(newHeadY < 0){
+      newHeadY = 63;
+    }
+
     snakeLink *current;
     snakeLink *previous;
     current = player->head;
