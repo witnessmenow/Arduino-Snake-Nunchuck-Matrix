@@ -77,19 +77,17 @@ void IRAM_ATTR display_updater() {
 }
 
 
-uint16_t textColor = display.color565(0, 0, 255);
+uint16_t myRED = display.color565(255, 0, 0);
+uint16_t myGREEN = display.color565(0, 255, 0);
+uint16_t myBLUE = display.color565(0, 0, 255);
+uint16_t myWHITE = display.color565(255, 255, 255);
+uint16_t myYELLOW = display.color565(255, 255, 0);
+uint16_t myCYAN = display.color565(0, 255, 255);
+uint16_t myMAGENTA = display.color565(255, 0, 255);
 uint16_t myBLACK = display.color565(0, 0, 0);
-uint16_t lineColor = display.color565(255, 0, 0);
-uint16_t backgroundColor = display.color565(0, 0, 0);
-
-int snakeX = 32;
-int snakeY = 32;
 
 int controllerX = 0;
 int controllerY = 0;
-
-int snakeXSpeed = 0;
-int snakeYSpeed = 0;
 
 int moveThreshold = 30;
 
@@ -102,11 +100,29 @@ struct snakeLink
 
 struct snake
 {
-  int data;
+  int xSpeed = 0;
+  int ySpeed = 0;
+  boolean ateAppleLastTurn = false;
+  boolean alive = true;
   snakeLink *head;
 };
 
 snake *player;
+
+void initSnake(int snakeLength, int x, int y) {
+  snakeLink *current;
+  snakeLink *previous = NULL;
+  for (int i = x - snakeLength + 1; i <= x; i++) {
+    current = new snakeLink;
+    current->x = i;
+    current->y = y;
+    current->next = previous;
+    previous = current;
+  }
+
+  player = new snake;
+  player->head = current;
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -125,37 +141,16 @@ void setup() {
     delay(1000);
   }
 
-  Serial.println("Snake init start");
-  player = new snake;
+  //Serial.println("Snake init start");
+  initSnake(10, 32, 32);
 
-  snakeLink *tail = new snakeLink;
-  snakeLink *middleTail = new snakeLink;
-  snakeLink *middleHead = new snakeLink;
-  
-  player->head = new snakeLink;
-
-  tail->x = 29;
-  tail->y = 32;
-  tail->next = NULL;
-
-  middleTail->x = 30;
-  middleTail->y = 32;
-  middleTail->next = tail;
-
-  middleHead->x = 31;
-  middleHead->y = 32;
-  middleHead->next = middleTail;
-
-  player->head->x = 32;
-  player->head->y = 32;
-  player->head->next = middleHead;
-
-  Serial.println("Snake init done");
+  //Serial.println("Snake init done");
 }
 
 int16_t x = 0, dx = 1;
 
-void calculateSnakeMovement() {
+void readControllerInput()
+{
   boolean success = nchuk.update();  // Get new data from the controller
 
   if (!success) {  // Ruh roh
@@ -163,6 +158,11 @@ void calculateSnakeMovement() {
     delay(1000);
   }
   else {
+
+    if (nchuk.buttonC()) {
+      initSnake(10, 32, 32);
+    }
+
     // Read a joystick axis (0-255, X and Y)
     int joyY = nchuk.joyY();
     int joyX = nchuk.joyX();
@@ -182,67 +182,92 @@ void calculateSnakeMovement() {
     } else {
       controllerY = 0;
     }
+  }
+}
 
-    if (controllerX != 0 || controllerY != 0) {
-      //We have some update
-      if (snakeXSpeed != 0) {
-        // Snake is moving on the X
-        if (controllerY != 0)
-        {
-          snakeXSpeed = 0;
-          snakeYSpeed = controllerY;
-        }
-      } else if (snakeYSpeed != 0) {
-        // Snake is moving on the Y
-        if (controllerX != 0)
-        {
-          snakeYSpeed = 0;
-          snakeXSpeed = controllerX;
-        }
-      } else {
-        // Snake is not moving
-        if (controllerX != 0)
-        {
-          snakeXSpeed = controllerX;
-        } else {
-          // will just be 0 if it's not
-          // being pressed.
-          snakeYSpeed = controllerY;
-        }
+void calculateSnakeMovement() {
+
+  if (controllerX != 0 || controllerY != 0) {
+    //We have some update
+    if (player->xSpeed != 0) {
+      // Snake is moving on the X
+
+      // We only care about y movements from the controller
+      // as the snake will continue forward on the X anyways
+      // and it can't change direction on the X
+
+      if (controllerY != 0)
+      {
+        player->xSpeed = 0;
+        player->ySpeed = controllerY;
       }
-
+    } else if (player->ySpeed != 0) {
+      // Snake is moving on the Y
+      if (controllerX != 0)
+      {
+        player->ySpeed = 0;
+        player->xSpeed = controllerX;
+      }
+    } else {
+      // Snake is not moving
+      if (controllerX == 1)
+      {
+        //-1 instantly killed the snake!
+        player->xSpeed = controllerX;
+      } else {
+        // will just be 0 if it's not
+        // being pressed.
+        player->ySpeed = controllerY;
+      }
     }
   }
 }
 
 void processSnake() {
 
-  if (snakeXSpeed != 0 || snakeYSpeed != 0)
+  if (player->alive && (player->xSpeed != 0 || player->ySpeed != 0))
   {
-    int newHeadX = player->head->x + snakeXSpeed;
-    int newHeadY = player->head->y + snakeYSpeed;
-    snakeLink *newHead = new snakeLink;
-    newHead->x = newHeadX;
-    newHead->y = newHeadY;
-    newHead->next = player->head;
+    int newHeadX = player->head->x + player->xSpeed;
+    int newHeadY = player->head->y + player->ySpeed;
 
-    //if(eat treat do something)
-
-    player->head = newHead;
-    snakeLink *tmp = newHead;
-    int count = 0;
-    while (tmp->next != NULL) {
-      if (tmp->next->next == NULL)
-      {
-        tmp->next = NULL;
-      } else {
-        count++;
-        tmp = tmp->next;
-      }
+    snakeLink *current;
+    snakeLink *previous;
+    current = player->head;
+    boolean collision = false;
+    while (current->next != NULL)
+    {
+      collision = collision || ((current->x == newHeadX) && (current->y == newHeadY));
+      previous = current;
+      current = current->next;
     }
 
-    Serial.print("Count: ");
-    Serial.println(count);
+    player->alive = !collision;
+
+    if (player->ateAppleLastTurn) {
+      // Snake ate apple last turn, so we create a new
+      // link as the head.
+      player->ateAppleLastTurn = false;
+      snakeLink *newHead = new snakeLink;
+      newHead->x = newHeadX;
+      newHead->y = newHeadY;
+      newHead->next = player->head;
+      player->head = newHead;
+    } else {
+      // Move tail to the head, and make the second
+      // last link the tail
+
+      //current is the old tail
+      current->x = newHeadX;
+      current->y = newHeadY;
+      current->next = player->head;
+      player->head = current;
+
+      //previous is the new tail
+      previous->next = NULL;
+    }
+
+    //Serial.print("Count: ");
+    //Serial.println(count);
   } else {
     //Serial.print("No movement yet");
   }
@@ -251,20 +276,25 @@ void processSnake() {
 
 void drawSnake() {
   snakeLink *tmp = player->head;
+  boolean head = true;
+  uint16_t snakeColour = player->alive ? myRED : myMAGENTA;
   while (tmp != NULL) {
-    display.drawPixel(tmp->x, tmp->y, lineColor);
+    display.drawPixel(tmp->x, tmp->y, snakeColour);
     tmp = tmp->next;
   }
+  //adding a different colour for the head
+  display.drawPixel(player->head->x, player->head->y, myGREEN);
 }
 
 void loop() {
 
+  readControllerInput();
   calculateSnakeMovement();
   processSnake();
 
 
   //  display.clearDisplay();
-  display.fillScreen(backgroundColor);
+  display.fillScreen(myBLACK);
 
   drawSnake();
   display.showBuffer();
