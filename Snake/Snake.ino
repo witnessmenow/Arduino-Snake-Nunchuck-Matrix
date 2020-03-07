@@ -48,6 +48,26 @@
 // Can be installed from the library manager
 // https://github.com/adafruit/Adafruit-GFX-Library
 
+//--------------------------------
+//Game Config Options:
+//--------------------------------
+
+//Display settings
+#define SCREEN_X 64
+#define SCREEN_Y 64
+#define SCAN_RATE 32
+
+//Snake Settings
+#define SNAKE_START_LENGTH 10
+
+//Game Settings
+#define DELAY_BETWEEN_FRAMES 10 // smaller == faster snake
+//--------------------------------
+
+//--------------------------------
+//Pin Definitions:
+//--------------------------------
+
 // Pin definition for the Matrix
 #define P_LAT 22
 #define P_A 19
@@ -57,9 +77,10 @@
 #define P_E 15
 #define P_OE 2
 
-// I2C pins (pxMatrix uses the default ones, so we need to use others)
+// I2C pins (pxMatrix uses the default i2c pins, so we need to use others)
 #define ONE_SDA 27
 #define ONE_SCL 33
+//--------------------------------
 
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -67,7 +88,7 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 Nunchuk nchuk;   // Controller on bus #1
 
-PxMATRIX display(64, 64, P_LAT, P_OE, P_A, P_B, P_C, P_D, P_E);
+PxMATRIX display(SCREEN_X, SCREEN_Y, P_LAT, P_OE, P_A, P_B, P_C, P_D, P_E);
 
 void IRAM_ATTR display_updater() {
   // Increment the counter and set the time of ISR
@@ -90,6 +111,10 @@ int controllerX = 0;
 int controllerY = 0;
 
 int moveThreshold = 30;
+
+int appleX = -1;
+int appleY = -1;
+boolean appleHidden = true;
 
 struct snakeLink
 {
@@ -127,7 +152,7 @@ void initSnake(int snakeLength, int x, int y) {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  display.begin(32);
+  display.begin(SCAN_RATE);
   display.flushDisplay();
 
   timer = timerBegin(0, 80, true);
@@ -135,19 +160,21 @@ void setup() {
   timerAlarmWrite(timer, 2000, true);
   timerAlarmEnable(timer);
 
+  // Normally we would use "nchuck.begin()",
+  // but because we are using custom i2c pins
+  // we need to use Wire.begin
   Wire.begin(ONE_SDA, ONE_SCL);
+
   while (!nchuk.connect()) {
     Serial.println("Nunchuk on bus #1 not detected!");
     delay(1000);
   }
 
   //Serial.println("Snake init start");
-  initSnake(10, 32, 32);
+  initSnake(SNAKE_START_LENGTH, SCREEN_X / 2, SCREEN_Y / 2);
 
   //Serial.println("Snake init done");
 }
-
-int16_t x = 0, dx = 1;
 
 void readControllerInput()
 {
@@ -160,7 +187,7 @@ void readControllerInput()
   else {
 
     if (nchuk.buttonC()) {
-      initSnake(10, 32, 32);
+      initSnake(SNAKE_START_LENGTH, SCREEN_X / 2, SCREEN_Y / 2);
     }
 
     // Read a joystick axis (0-255, X and Y)
@@ -225,21 +252,21 @@ void calculateSnakeMovement() {
 
 void processSnake() {
 
-  if (player->alive && (player->xSpeed != 0 || player->ySpeed != 0))
+  if (player->alive)
   {
     int newHeadX = player->head->x + player->xSpeed;
     int newHeadY = player->head->y + player->ySpeed;
 
-    if(newHeadX > 63){
+    if (newHeadX >= SCREEN_X) {
       newHeadX = 0;
-    } else if(newHeadX < 0){
-      newHeadX = 63;
+    } else if (newHeadX < 0) {
+      newHeadX = SCREEN_X - 1;
     }
 
-    if(newHeadY > 63){
+    if (newHeadY >= SCREEN_Y) {
       newHeadY = 0;
-    } else if(newHeadY < 0){
-      newHeadY = 63;
+    } else if (newHeadY < 0) {
+      newHeadY = SCREEN_Y - 1;
     }
 
     snakeLink *current;
@@ -286,6 +313,46 @@ void processSnake() {
 
 }
 
+void processApple() {
+  boolean appleEaten = ((player->head->x == appleX) && (player->head->y == appleY));
+  if (appleHidden || appleEaten) {
+    if(appleHidden) {
+      appleHidden = false;
+    }
+    
+    if(appleEaten) {
+      player->ateAppleLastTurn = true;
+    } 
+
+    // need new Apple
+    boolean verifiedPosition = false;
+    while (!verifiedPosition) {
+      int randomNum = random(SCREEN_X * SCREEN_Y);
+      appleX = randomNum % SCREEN_X;
+      appleY = randomNum / SCREEN_X;
+
+      Serial.print(appleX);
+      Serial.print(",");
+      Serial.println(appleY);
+      
+      verifiedPosition = true;
+      
+      snakeLink *current;
+      current = player->head;
+      while (current->next != NULL)
+      {
+        if((current->x == appleX) && (current->y == appleY)){
+          // apple can't go here, it clashes.
+          verifiedPosition = false;
+          break;
+        }
+        current = current->next;
+      }
+
+    }
+  }
+}
+
 void drawSnake() {
   snakeLink *tmp = player->head;
   boolean head = true;
@@ -298,17 +365,23 @@ void drawSnake() {
   display.drawPixel(player->head->x, player->head->y, myGREEN);
 }
 
+void drawApple() {
+  display.drawPixel(appleX, appleY, myBLUE);
+}
+
 void loop() {
 
   readControllerInput();
   calculateSnakeMovement();
-  processSnake();
-
-
+  if(player->xSpeed != 0 || player->ySpeed != 0){
+    processSnake();
+    processApple();
+  }
   //  display.clearDisplay();
   display.fillScreen(myBLACK);
 
   drawSnake();
+  drawApple();
   display.showBuffer();
-  delay(10);
+  delay(DELAY_BETWEEN_FRAMES);
 }
